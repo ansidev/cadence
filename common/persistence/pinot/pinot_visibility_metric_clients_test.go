@@ -38,7 +38,6 @@ import (
 	"github.com/uber/cadence/common/log"
 	"github.com/uber/cadence/common/log/testlogger"
 	"github.com/uber/cadence/common/metrics"
-	metricsClientMocks "github.com/uber/cadence/common/metrics/mocks"
 	"github.com/uber/cadence/common/mocks"
 	"github.com/uber/cadence/common/persistence"
 	p "github.com/uber/cadence/common/persistence"
@@ -56,7 +55,7 @@ func TestMetricClientRecordWorkflowExecutionStarted(t *testing.T) {
 	errorRequest := &p.RecordWorkflowExecutionStartedRequest{
 		WorkflowTypeName: "errorWorkflowTypeName",
 		Memo: &types.Memo{
-			map[string][]byte{
+			Fields: map[string][]byte{
 				"CustomStringField": []byte("test string"),
 			},
 		},
@@ -65,7 +64,7 @@ func TestMetricClientRecordWorkflowExecutionStarted(t *testing.T) {
 	request := &p.RecordWorkflowExecutionStartedRequest{
 		WorkflowTypeName: "wtn",
 		Memo: &types.Memo{
-			map[string][]byte{
+			Fields: map[string][]byte{
 				"CustomStringField": []byte("test string"),
 			},
 		},
@@ -74,30 +73,30 @@ func TestMetricClientRecordWorkflowExecutionStarted(t *testing.T) {
 	tests := map[string]struct {
 		request                *p.RecordWorkflowExecutionStartedRequest
 		producerMockAffordance func(mockProducer *mocks.KafkaProducer)
-		scopeMockAffordance    func(mockScope *metricsClientMocks.Scope)
+		scopeMockAffordance    func(mockScope *metrics.MockScope)
 		expectedError          error
 	}{
-		"Case1: error case": {
+		"Case 1: error case": {
 			request: errorRequest,
 			producerMockAffordance: func(mockProducer *mocks.KafkaProducer) {
 				mockProducer.On("Publish", mock.Anything, mock.MatchedBy(func(input *indexer.PinotMessage) bool {
 					return true
-				})).Return(&types.BadRequestError{}).Once()
+				})).Return(&types.BadRequestError{}).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Times(3)
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(3)
 			},
 			expectedError: &types.BadRequestError{},
 		},
-		"Case2: normal case": {
+		"Case 2: normal case": {
 			request: request,
 			producerMockAffordance: func(mockProducer *mocks.KafkaProducer) {
 				mockProducer.On("Publish", mock.Anything, mock.MatchedBy(func(input *indexer.PinotMessage) bool {
 					return true
-				})).Return(nil).Once()
+				})).Return(nil).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Once()
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(1)
 			},
 			expectedError: nil,
 		},
@@ -109,8 +108,8 @@ func TestMetricClientRecordWorkflowExecutionStarted(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			mockPinotClient := pnt.NewMockGenericClient(ctrl)
 			mockProducer := &mocks.KafkaProducer{}
-			mockMetricClient := &metricsClientMocks.Client{}
-			mockScope := &metricsClientMocks.Scope{}
+			mockMetricClient := metrics.NewMockClient(ctrl)
+			mockScope := metrics.NewMockScope(ctrl)
 
 			// create metricClient
 			logger := log.NewNoop()
@@ -126,8 +125,8 @@ func TestMetricClientRecordWorkflowExecutionStarted(t *testing.T) {
 			metricsClient := visibilityMgr.(*pinotVisibilityMetricsClient)
 
 			// mock behaviors
-			mockMetricClient.On("Scope", mock.Anything, mock.Anything).Return(mockScope).Once()
-			mockScope.On("StartTimer", mock.Anything, mock.Anything).Return(testStopwatch).Once()
+			mockMetricClient.EXPECT().Scope(gomock.Any(), gomock.Any()).Return(mockScope).Times(1)
+			mockScope.EXPECT().StartTimer(gomock.Any()).Return(testStopwatch).Times(1)
 			test.producerMockAffordance(mockProducer)
 			test.scopeMockAffordance(mockScope)
 
@@ -142,7 +141,7 @@ func TestMetricClientRecordWorkflowExecutionClosed(t *testing.T) {
 	errorRequest := &p.RecordWorkflowExecutionClosedRequest{
 		WorkflowTypeName: "errorWorkflowTypeName",
 		Memo: &types.Memo{
-			map[string][]byte{
+			Fields: map[string][]byte{
 				"CustomStringField": []byte("test string"),
 			},
 		},
@@ -151,7 +150,7 @@ func TestMetricClientRecordWorkflowExecutionClosed(t *testing.T) {
 	request := &p.RecordWorkflowExecutionClosedRequest{
 		WorkflowTypeName: "wtn",
 		Memo: &types.Memo{
-			map[string][]byte{
+			Fields: map[string][]byte{
 				"CustomStringField": []byte("test string"),
 			},
 		},
@@ -160,30 +159,30 @@ func TestMetricClientRecordWorkflowExecutionClosed(t *testing.T) {
 	tests := map[string]struct {
 		request                *p.RecordWorkflowExecutionClosedRequest
 		producerMockAffordance func(mockProducer *mocks.KafkaProducer)
-		scopeMockAffordance    func(mockScope *metricsClientMocks.Scope)
+		scopeMockAffordance    func(mockScope *metrics.MockScope)
 		expectedError          error
 	}{
-		"Case1: error case": {
+		"Case 1: error case": {
 			request: errorRequest,
 			producerMockAffordance: func(mockProducer *mocks.KafkaProducer) {
 				mockProducer.On("Publish", mock.Anything, mock.MatchedBy(func(input *indexer.PinotMessage) bool {
 					return true
-				})).Return(&types.ServiceBusyError{}).Once()
+				})).Return(&types.ServiceBusyError{}).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Times(3)
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(3)
 			},
 			expectedError: &types.ServiceBusyError{},
 		},
-		"Case2: normal case": {
+		"Case 2: normal case": {
 			request: request,
 			producerMockAffordance: func(mockProducer *mocks.KafkaProducer) {
 				mockProducer.On("Publish", mock.Anything, mock.MatchedBy(func(input *indexer.PinotMessage) bool {
 					return true
-				})).Return(nil).Once()
+				})).Return(nil).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Once()
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(1)
 			},
 			expectedError: nil,
 		},
@@ -195,8 +194,8 @@ func TestMetricClientRecordWorkflowExecutionClosed(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			mockPinotClient := pnt.NewMockGenericClient(ctrl)
 			mockProducer := &mocks.KafkaProducer{}
-			mockMetricClient := &metricsClientMocks.Client{}
-			mockScope := &metricsClientMocks.Scope{}
+			mockMetricClient := metrics.NewMockClient(ctrl)
+			mockScope := metrics.NewMockScope(ctrl)
 
 			// create metricClient
 			logger := log.NewNoop()
@@ -212,8 +211,8 @@ func TestMetricClientRecordWorkflowExecutionClosed(t *testing.T) {
 			metricsClient := visibilityMgr.(*pinotVisibilityMetricsClient)
 
 			// mock behaviors
-			mockMetricClient.On("Scope", mock.Anything, mock.Anything).Return(mockScope).Once()
-			mockScope.On("StartTimer", mock.Anything, mock.Anything).Return(testStopwatch).Once()
+			mockMetricClient.EXPECT().Scope(gomock.Any(), gomock.Any()).Return(mockScope).Times(1)
+			mockScope.EXPECT().StartTimer(gomock.Any()).Return(testStopwatch).Times(1)
 			test.producerMockAffordance(mockProducer)
 			test.scopeMockAffordance(mockScope)
 
@@ -236,30 +235,30 @@ func TestMetricClientRecordWorkflowExecutionUninitialized(t *testing.T) {
 	tests := map[string]struct {
 		request                *p.RecordWorkflowExecutionUninitializedRequest
 		producerMockAffordance func(mockProducer *mocks.KafkaProducer)
-		scopeMockAffordance    func(mockScope *metricsClientMocks.Scope)
+		scopeMockAffordance    func(mockScope *metrics.MockScope)
 		expectedError          error
 	}{
-		"Case1: error case": {
+		"Case 1: error case": {
 			request: errorRequest,
 			producerMockAffordance: func(mockProducer *mocks.KafkaProducer) {
 				mockProducer.On("Publish", mock.Anything, mock.MatchedBy(func(input *indexer.PinotMessage) bool {
 					return true
-				})).Return(fmt.Errorf("error")).Once()
+				})).Return(fmt.Errorf("error")).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Times(3)
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(2)
 			},
 			expectedError: fmt.Errorf("error"),
 		},
-		"Case2: normal case": {
+		"Case 2: normal case": {
 			request: request,
 			producerMockAffordance: func(mockProducer *mocks.KafkaProducer) {
 				mockProducer.On("Publish", mock.Anything, mock.MatchedBy(func(input *indexer.PinotMessage) bool {
 					return true
-				})).Return(nil).Once()
+				})).Return(nil).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Once()
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(1)
 			},
 			expectedError: nil,
 		},
@@ -271,8 +270,8 @@ func TestMetricClientRecordWorkflowExecutionUninitialized(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			mockPinotClient := pnt.NewMockGenericClient(ctrl)
 			mockProducer := &mocks.KafkaProducer{}
-			mockMetricClient := &metricsClientMocks.Client{}
-			mockScope := &metricsClientMocks.Scope{}
+			mockMetricClient := metrics.NewMockClient(ctrl)
+			mockScope := metrics.NewMockScope(ctrl)
 
 			// create metricClient
 			logger := log.NewNoop()
@@ -288,8 +287,8 @@ func TestMetricClientRecordWorkflowExecutionUninitialized(t *testing.T) {
 			metricsClient := visibilityMgr.(*pinotVisibilityMetricsClient)
 
 			// mock behaviors
-			mockMetricClient.On("Scope", mock.Anything, mock.Anything).Return(mockScope).Once()
-			mockScope.On("StartTimer", mock.Anything, mock.Anything).Return(testStopwatch).Once()
+			mockMetricClient.EXPECT().Scope(gomock.Any(), gomock.Any()).Return(mockScope).Times(1)
+			mockScope.EXPECT().StartTimer(gomock.Any()).Return(testStopwatch).Times(1)
 			test.producerMockAffordance(mockProducer)
 			test.scopeMockAffordance(mockScope)
 
@@ -312,30 +311,30 @@ func TestMetricClientUpsertWorkflowExecution(t *testing.T) {
 	tests := map[string]struct {
 		request                *p.UpsertWorkflowExecutionRequest
 		producerMockAffordance func(mockProducer *mocks.KafkaProducer)
-		scopeMockAffordance    func(mockScope *metricsClientMocks.Scope)
+		scopeMockAffordance    func(mockScope *metrics.MockScope)
 		expectedError          error
 	}{
-		"Case1: error case": {
+		"Case 1: error case": {
 			request: errorRequest,
 			producerMockAffordance: func(mockProducer *mocks.KafkaProducer) {
 				mockProducer.On("Publish", mock.Anything, mock.MatchedBy(func(input *indexer.PinotMessage) bool {
 					return true
-				})).Return(fmt.Errorf("error")).Once()
+				})).Return(fmt.Errorf("error")).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Times(3)
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(2)
 			},
 			expectedError: fmt.Errorf("error"),
 		},
-		"Case2: normal case": {
+		"Case 2: normal case": {
 			request: request,
 			producerMockAffordance: func(mockProducer *mocks.KafkaProducer) {
 				mockProducer.On("Publish", mock.Anything, mock.MatchedBy(func(input *indexer.PinotMessage) bool {
 					return true
-				})).Return(nil).Once()
+				})).Return(nil).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Once()
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(1)
 			},
 			expectedError: nil,
 		},
@@ -347,8 +346,8 @@ func TestMetricClientUpsertWorkflowExecution(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			mockPinotClient := pnt.NewMockGenericClient(ctrl)
 			mockProducer := &mocks.KafkaProducer{}
-			mockMetricClient := &metricsClientMocks.Client{}
-			mockScope := &metricsClientMocks.Scope{}
+			mockMetricClient := metrics.NewMockClient(ctrl)
+			mockScope := metrics.NewMockScope(ctrl)
 
 			// create metricClient
 			logger := log.NewNoop()
@@ -364,8 +363,8 @@ func TestMetricClientUpsertWorkflowExecution(t *testing.T) {
 			metricsClient := visibilityMgr.(*pinotVisibilityMetricsClient)
 
 			// mock behaviors
-			mockMetricClient.On("Scope", mock.Anything, mock.Anything).Return(mockScope).Once()
-			mockScope.On("StartTimer", mock.Anything, mock.Anything).Return(testStopwatch).Once()
+			mockMetricClient.EXPECT().Scope(gomock.Any(), gomock.Any()).Return(mockScope).Times(1)
+			mockScope.EXPECT().StartTimer(gomock.Any()).Return(testStopwatch).Times(1)
 			test.producerMockAffordance(mockProducer)
 			test.scopeMockAffordance(mockScope)
 
@@ -388,28 +387,28 @@ func TestMetricClientListOpenWorkflowExecutions(t *testing.T) {
 	tests := map[string]struct {
 		request                   *p.ListWorkflowExecutionsRequest
 		pinotClientMockAffordance func(mockPinotClient *pnt.MockGenericClient)
-		scopeMockAffordance       func(mockScope *metricsClientMocks.Scope)
+		scopeMockAffordance       func(mockScope *metrics.MockScope)
 		expectedError             error
 	}{
-		"Case1: error case": {
+		"Case 1: error case": {
 			request: errorRequest,
 			pinotClientMockAffordance: func(mockPinotClient *pnt.MockGenericClient) {
 				mockPinotClient.EXPECT().GetTableName().Return(testTableName).Times(1)
 				mockPinotClient.EXPECT().Search(gomock.Any()).Return(nil, fmt.Errorf("error")).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Times(3)
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(2)
 			},
 			expectedError: fmt.Errorf("error"),
 		},
-		"Case2: normal case": {
+		"Case 2: normal case": {
 			request: request,
 			pinotClientMockAffordance: func(mockPinotClient *pnt.MockGenericClient) {
 				mockPinotClient.EXPECT().GetTableName().Return(testTableName).Times(1)
 				mockPinotClient.EXPECT().Search(gomock.Any()).Return(nil, nil).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Once()
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(1)
 			},
 			expectedError: nil,
 		},
@@ -421,8 +420,8 @@ func TestMetricClientListOpenWorkflowExecutions(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			mockPinotClient := pnt.NewMockGenericClient(ctrl)
 			mockProducer := &mocks.KafkaProducer{}
-			mockMetricClient := &metricsClientMocks.Client{}
-			mockScope := &metricsClientMocks.Scope{}
+			mockMetricClient := metrics.NewMockClient(ctrl)
+			mockScope := metrics.NewMockScope(ctrl)
 
 			// create metricClient
 			logger := log.NewNoop()
@@ -438,8 +437,8 @@ func TestMetricClientListOpenWorkflowExecutions(t *testing.T) {
 			metricsClient := visibilityMgr.(*pinotVisibilityMetricsClient)
 
 			// mock behaviors
-			mockMetricClient.On("Scope", mock.Anything, mock.Anything).Return(mockScope).Once()
-			mockScope.On("StartTimer", mock.Anything, mock.Anything).Return(testStopwatch).Once()
+			mockMetricClient.EXPECT().Scope(gomock.Any(), gomock.Any()).Return(mockScope).Times(1)
+			mockScope.EXPECT().StartTimer(gomock.Any()).Return(testStopwatch).Times(1)
 			test.pinotClientMockAffordance(mockPinotClient)
 			test.scopeMockAffordance(mockScope)
 
@@ -462,28 +461,28 @@ func TestMetricClientListClosedWorkflowExecutions(t *testing.T) {
 	tests := map[string]struct {
 		request                   *p.ListWorkflowExecutionsRequest
 		pinotClientMockAffordance func(mockPinotClient *pnt.MockGenericClient)
-		scopeMockAffordance       func(mockScope *metricsClientMocks.Scope)
+		scopeMockAffordance       func(mockScope *metrics.MockScope)
 		expectedError             error
 	}{
-		"Case1: error case": {
+		"Case 1: error case": {
 			request: errorRequest,
 			pinotClientMockAffordance: func(mockPinotClient *pnt.MockGenericClient) {
 				mockPinotClient.EXPECT().GetTableName().Return(testTableName).Times(1)
 				mockPinotClient.EXPECT().Search(gomock.Any()).Return(nil, fmt.Errorf("error")).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Times(3)
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(2)
 			},
 			expectedError: fmt.Errorf("error"),
 		},
-		"Case2: normal case": {
+		"Case 2: normal case": {
 			request: request,
 			pinotClientMockAffordance: func(mockPinotClient *pnt.MockGenericClient) {
 				mockPinotClient.EXPECT().GetTableName().Return(testTableName).Times(1)
 				mockPinotClient.EXPECT().Search(gomock.Any()).Return(nil, nil).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Once()
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(1)
 			},
 			expectedError: nil,
 		},
@@ -495,8 +494,8 @@ func TestMetricClientListClosedWorkflowExecutions(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			mockPinotClient := pnt.NewMockGenericClient(ctrl)
 			mockProducer := &mocks.KafkaProducer{}
-			mockMetricClient := &metricsClientMocks.Client{}
-			mockScope := &metricsClientMocks.Scope{}
+			mockMetricClient := metrics.NewMockClient(ctrl)
+			mockScope := metrics.NewMockScope(ctrl)
 
 			// create metricClient
 			logger := log.NewNoop()
@@ -512,8 +511,8 @@ func TestMetricClientListClosedWorkflowExecutions(t *testing.T) {
 			metricsClient := visibilityMgr.(*pinotVisibilityMetricsClient)
 
 			// mock behaviors
-			mockMetricClient.On("Scope", mock.Anything, mock.Anything).Return(mockScope).Once()
-			mockScope.On("StartTimer", mock.Anything, mock.Anything).Return(testStopwatch).Once()
+			mockMetricClient.EXPECT().Scope(gomock.Any(), gomock.Any()).Return(mockScope).Times(1)
+			mockScope.EXPECT().StartTimer(gomock.Any()).Return(testStopwatch).Times(1)
 			test.pinotClientMockAffordance(mockPinotClient)
 			test.scopeMockAffordance(mockScope)
 
@@ -537,28 +536,28 @@ func TestMetricClientListOpenWorkflowExecutionsByType(t *testing.T) {
 	tests := map[string]struct {
 		request                   *p.ListWorkflowExecutionsByTypeRequest
 		pinotClientMockAffordance func(mockPinotClient *pnt.MockGenericClient)
-		scopeMockAffordance       func(mockScope *metricsClientMocks.Scope)
+		scopeMockAffordance       func(mockScope *metrics.MockScope)
 		expectedError             error
 	}{
-		"Case1: error case": {
+		"Case 1: error case": {
 			request: errorRequest,
 			pinotClientMockAffordance: func(mockPinotClient *pnt.MockGenericClient) {
 				mockPinotClient.EXPECT().GetTableName().Return(testTableName).Times(1)
 				mockPinotClient.EXPECT().Search(gomock.Any()).Return(nil, fmt.Errorf("error")).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Times(3)
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(2)
 			},
 			expectedError: fmt.Errorf("error"),
 		},
-		"Case2: normal case": {
+		"Case 2: normal case": {
 			request: request,
 			pinotClientMockAffordance: func(mockPinotClient *pnt.MockGenericClient) {
 				mockPinotClient.EXPECT().GetTableName().Return(testTableName).Times(1)
 				mockPinotClient.EXPECT().Search(gomock.Any()).Return(nil, nil).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Once()
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(1)
 			},
 			expectedError: nil,
 		},
@@ -570,8 +569,8 @@ func TestMetricClientListOpenWorkflowExecutionsByType(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			mockPinotClient := pnt.NewMockGenericClient(ctrl)
 			mockProducer := &mocks.KafkaProducer{}
-			mockMetricClient := &metricsClientMocks.Client{}
-			mockScope := &metricsClientMocks.Scope{}
+			mockMetricClient := metrics.NewMockClient(ctrl)
+			mockScope := metrics.NewMockScope(ctrl)
 
 			// create metricClient
 			logger := log.NewNoop()
@@ -587,8 +586,8 @@ func TestMetricClientListOpenWorkflowExecutionsByType(t *testing.T) {
 			metricsClient := visibilityMgr.(*pinotVisibilityMetricsClient)
 
 			// mock behaviors
-			mockMetricClient.On("Scope", mock.Anything, mock.Anything).Return(mockScope).Once()
-			mockScope.On("StartTimer", mock.Anything, mock.Anything).Return(testStopwatch).Once()
+			mockMetricClient.EXPECT().Scope(gomock.Any(), gomock.Any()).Return(mockScope).Times(1)
+			mockScope.EXPECT().StartTimer(gomock.Any()).Return(testStopwatch).Times(1)
 			test.pinotClientMockAffordance(mockPinotClient)
 			test.scopeMockAffordance(mockScope)
 
@@ -612,28 +611,28 @@ func TestMetricClientListClosedWorkflowExecutionsByType(t *testing.T) {
 	tests := map[string]struct {
 		request                   *p.ListWorkflowExecutionsByTypeRequest
 		pinotClientMockAffordance func(mockPinotClient *pnt.MockGenericClient)
-		scopeMockAffordance       func(mockScope *metricsClientMocks.Scope)
+		scopeMockAffordance       func(mockScope *metrics.MockScope)
 		expectedError             error
 	}{
-		"Case1: error case": {
+		"Case 1: error case": {
 			request: errorRequest,
 			pinotClientMockAffordance: func(mockPinotClient *pnt.MockGenericClient) {
 				mockPinotClient.EXPECT().GetTableName().Return(testTableName).Times(1)
 				mockPinotClient.EXPECT().Search(gomock.Any()).Return(nil, fmt.Errorf("error")).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Times(3)
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(2)
 			},
 			expectedError: fmt.Errorf("error"),
 		},
-		"Case2: normal case": {
+		"Case 2: normal case": {
 			request: request,
 			pinotClientMockAffordance: func(mockPinotClient *pnt.MockGenericClient) {
 				mockPinotClient.EXPECT().GetTableName().Return(testTableName).Times(1)
 				mockPinotClient.EXPECT().Search(gomock.Any()).Return(nil, nil).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Once()
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(1)
 			},
 			expectedError: nil,
 		},
@@ -645,8 +644,8 @@ func TestMetricClientListClosedWorkflowExecutionsByType(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			mockPinotClient := pnt.NewMockGenericClient(ctrl)
 			mockProducer := &mocks.KafkaProducer{}
-			mockMetricClient := &metricsClientMocks.Client{}
-			mockScope := &metricsClientMocks.Scope{}
+			mockMetricClient := metrics.NewMockClient(ctrl)
+			mockScope := metrics.NewMockScope(ctrl)
 
 			// create metricClient
 			logger := log.NewNoop()
@@ -662,8 +661,8 @@ func TestMetricClientListClosedWorkflowExecutionsByType(t *testing.T) {
 			metricsClient := visibilityMgr.(*pinotVisibilityMetricsClient)
 
 			// mock behaviors
-			mockMetricClient.On("Scope", mock.Anything, mock.Anything).Return(mockScope).Once()
-			mockScope.On("StartTimer", mock.Anything, mock.Anything).Return(testStopwatch).Once()
+			mockMetricClient.EXPECT().Scope(gomock.Any(), gomock.Any()).Return(mockScope).Times(1)
+			mockScope.EXPECT().StartTimer(gomock.Any()).Return(testStopwatch).Times(1)
 			test.pinotClientMockAffordance(mockPinotClient)
 			test.scopeMockAffordance(mockScope)
 
@@ -686,28 +685,28 @@ func TestMetricClientListOpenWorkflowExecutionsByWorkflowID(t *testing.T) {
 	tests := map[string]struct {
 		request                   *p.ListWorkflowExecutionsByWorkflowIDRequest
 		pinotClientMockAffordance func(mockPinotClient *pnt.MockGenericClient)
-		scopeMockAffordance       func(mockScope *metricsClientMocks.Scope)
+		scopeMockAffordance       func(mockScope *metrics.MockScope)
 		expectedError             error
 	}{
-		"Case1: error case": {
+		"Case 1: error case": {
 			request: errorRequest,
 			pinotClientMockAffordance: func(mockPinotClient *pnt.MockGenericClient) {
 				mockPinotClient.EXPECT().GetTableName().Return(testTableName).Times(1)
 				mockPinotClient.EXPECT().Search(gomock.Any()).Return(nil, fmt.Errorf("error")).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Times(3)
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(2)
 			},
 			expectedError: fmt.Errorf("error"),
 		},
-		"Case2: normal case": {
+		"Case 2: normal case": {
 			request: request,
 			pinotClientMockAffordance: func(mockPinotClient *pnt.MockGenericClient) {
 				mockPinotClient.EXPECT().GetTableName().Return(testTableName).Times(1)
 				mockPinotClient.EXPECT().Search(gomock.Any()).Return(nil, nil).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Once()
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(1)
 			},
 			expectedError: nil,
 		},
@@ -719,8 +718,8 @@ func TestMetricClientListOpenWorkflowExecutionsByWorkflowID(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			mockPinotClient := pnt.NewMockGenericClient(ctrl)
 			mockProducer := &mocks.KafkaProducer{}
-			mockMetricClient := &metricsClientMocks.Client{}
-			mockScope := &metricsClientMocks.Scope{}
+			mockMetricClient := metrics.NewMockClient(ctrl)
+			mockScope := metrics.NewMockScope(ctrl)
 
 			// create metricClient
 			logger := log.NewNoop()
@@ -736,8 +735,8 @@ func TestMetricClientListOpenWorkflowExecutionsByWorkflowID(t *testing.T) {
 			metricsClient := visibilityMgr.(*pinotVisibilityMetricsClient)
 
 			// mock behaviors
-			mockMetricClient.On("Scope", mock.Anything, mock.Anything).Return(mockScope).Once()
-			mockScope.On("StartTimer", mock.Anything, mock.Anything).Return(testStopwatch).Once()
+			mockMetricClient.EXPECT().Scope(gomock.Any(), gomock.Any()).Return(mockScope).Times(1)
+			mockScope.EXPECT().StartTimer(gomock.Any()).Return(testStopwatch).Times(1)
 			test.pinotClientMockAffordance(mockPinotClient)
 			test.scopeMockAffordance(mockScope)
 
@@ -760,28 +759,28 @@ func TestMetricClientListClosedWorkflowExecutionsByWorkflowID(t *testing.T) {
 	tests := map[string]struct {
 		request                   *p.ListWorkflowExecutionsByWorkflowIDRequest
 		pinotClientMockAffordance func(mockPinotClient *pnt.MockGenericClient)
-		scopeMockAffordance       func(mockScope *metricsClientMocks.Scope)
+		scopeMockAffordance       func(mockScope *metrics.MockScope)
 		expectedError             error
 	}{
-		"Case1: error case": {
+		"Case 1: error case": {
 			request: errorRequest,
 			pinotClientMockAffordance: func(mockPinotClient *pnt.MockGenericClient) {
 				mockPinotClient.EXPECT().GetTableName().Return(testTableName).Times(1)
 				mockPinotClient.EXPECT().Search(gomock.Any()).Return(nil, fmt.Errorf("error")).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Times(3)
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(2)
 			},
 			expectedError: fmt.Errorf("error"),
 		},
-		"Case2: normal case": {
+		"Case 2: normal case": {
 			request: request,
 			pinotClientMockAffordance: func(mockPinotClient *pnt.MockGenericClient) {
 				mockPinotClient.EXPECT().GetTableName().Return(testTableName).Times(1)
 				mockPinotClient.EXPECT().Search(gomock.Any()).Return(nil, nil).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Once()
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(1)
 			},
 			expectedError: nil,
 		},
@@ -793,8 +792,8 @@ func TestMetricClientListClosedWorkflowExecutionsByWorkflowID(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			mockPinotClient := pnt.NewMockGenericClient(ctrl)
 			mockProducer := &mocks.KafkaProducer{}
-			mockMetricClient := &metricsClientMocks.Client{}
-			mockScope := &metricsClientMocks.Scope{}
+			mockMetricClient := metrics.NewMockClient(ctrl)
+			mockScope := metrics.NewMockScope(ctrl)
 
 			// create metricClient
 			logger := log.NewNoop()
@@ -810,8 +809,8 @@ func TestMetricClientListClosedWorkflowExecutionsByWorkflowID(t *testing.T) {
 			metricsClient := visibilityMgr.(*pinotVisibilityMetricsClient)
 
 			// mock behaviors
-			mockMetricClient.On("Scope", mock.Anything, mock.Anything).Return(mockScope).Once()
-			mockScope.On("StartTimer", mock.Anything, mock.Anything).Return(testStopwatch).Once()
+			mockMetricClient.EXPECT().Scope(gomock.Any(), gomock.Any()).Return(mockScope).Times(1)
+			mockScope.EXPECT().StartTimer(gomock.Any()).Return(testStopwatch).Times(1)
 			test.pinotClientMockAffordance(mockPinotClient)
 			test.scopeMockAffordance(mockScope)
 
@@ -838,28 +837,28 @@ func TestMetricClientListClosedWorkflowExecutionsByStatus(t *testing.T) {
 	tests := map[string]struct {
 		request                   *p.ListClosedWorkflowExecutionsByStatusRequest
 		pinotClientMockAffordance func(mockPinotClient *pnt.MockGenericClient)
-		scopeMockAffordance       func(mockScope *metricsClientMocks.Scope)
+		scopeMockAffordance       func(mockScope *metrics.MockScope)
 		expectedError             error
 	}{
-		"Case1: error case": {
+		"Case 1: error case": {
 			request: errorRequest,
 			pinotClientMockAffordance: func(mockPinotClient *pnt.MockGenericClient) {
 				mockPinotClient.EXPECT().GetTableName().Return(testTableName).Times(1)
 				mockPinotClient.EXPECT().Search(gomock.Any()).Return(nil, fmt.Errorf("error")).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Times(3)
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(2)
 			},
 			expectedError: fmt.Errorf("error"),
 		},
-		"Case2: normal case": {
+		"Case 2: normal case": {
 			request: request,
 			pinotClientMockAffordance: func(mockPinotClient *pnt.MockGenericClient) {
 				mockPinotClient.EXPECT().GetTableName().Return(testTableName).Times(1)
 				mockPinotClient.EXPECT().Search(gomock.Any()).Return(nil, nil).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Once()
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(1)
 			},
 			expectedError: nil,
 		},
@@ -871,8 +870,8 @@ func TestMetricClientListClosedWorkflowExecutionsByStatus(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			mockPinotClient := pnt.NewMockGenericClient(ctrl)
 			mockProducer := &mocks.KafkaProducer{}
-			mockMetricClient := &metricsClientMocks.Client{}
-			mockScope := &metricsClientMocks.Scope{}
+			mockMetricClient := metrics.NewMockClient(ctrl)
+			mockScope := metrics.NewMockScope(ctrl)
 
 			// create metricClient
 			logger := log.NewNoop()
@@ -888,8 +887,8 @@ func TestMetricClientListClosedWorkflowExecutionsByStatus(t *testing.T) {
 			metricsClient := visibilityMgr.(*pinotVisibilityMetricsClient)
 
 			// mock behaviors
-			mockMetricClient.On("Scope", mock.Anything, mock.Anything).Return(mockScope).Once()
-			mockScope.On("StartTimer", mock.Anything, mock.Anything).Return(testStopwatch).Once()
+			mockMetricClient.EXPECT().Scope(gomock.Any(), gomock.Any()).Return(mockScope).Times(1)
+			mockScope.EXPECT().StartTimer(gomock.Any()).Return(testStopwatch).Times(1)
 			test.pinotClientMockAffordance(mockPinotClient)
 			test.scopeMockAffordance(mockScope)
 
@@ -908,21 +907,21 @@ func TestMetricClientGetClosedWorkflowExecution(t *testing.T) {
 	tests := map[string]struct {
 		request                   *p.GetClosedWorkflowExecutionRequest
 		pinotClientMockAffordance func(mockPinotClient *pnt.MockGenericClient)
-		scopeMockAffordance       func(mockScope *metricsClientMocks.Scope)
+		scopeMockAffordance       func(mockScope *metrics.MockScope)
 		expectedError             error
 	}{
-		"Case1: error case": {
+		"Case 1: error case": {
 			request: errorRequest,
 			pinotClientMockAffordance: func(mockPinotClient *pnt.MockGenericClient) {
 				mockPinotClient.EXPECT().GetTableName().Return(testTableName).Times(1)
 				mockPinotClient.EXPECT().Search(gomock.Any()).Return(nil, fmt.Errorf("error")).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Times(3)
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(2)
 			},
-			expectedError: fmt.Errorf("Pinot GetClosedWorkflowExecution failed, error"),
+			expectedError: fmt.Errorf("pinot GetClosedWorkflowExecution failed, error"),
 		},
-		"Case2: normal case": {
+		"Case 2: normal case": {
 			request: request,
 			pinotClientMockAffordance: func(mockPinotClient *pnt.MockGenericClient) {
 				mockPinotClient.EXPECT().GetTableName().Return(testTableName).Times(1)
@@ -934,8 +933,8 @@ func TestMetricClientGetClosedWorkflowExecution(t *testing.T) {
 					},
 				}, nil).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Once()
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(1)
 			},
 			expectedError: nil,
 		},
@@ -947,8 +946,8 @@ func TestMetricClientGetClosedWorkflowExecution(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			mockPinotClient := pnt.NewMockGenericClient(ctrl)
 			mockProducer := &mocks.KafkaProducer{}
-			mockMetricClient := &metricsClientMocks.Client{}
-			mockScope := &metricsClientMocks.Scope{}
+			mockMetricClient := metrics.NewMockClient(ctrl)
+			mockScope := metrics.NewMockScope(ctrl)
 
 			// create metricClient
 			logger := log.NewNoop()
@@ -964,8 +963,8 @@ func TestMetricClientGetClosedWorkflowExecution(t *testing.T) {
 			metricsClient := visibilityMgr.(*pinotVisibilityMetricsClient)
 
 			// mock behaviors
-			mockMetricClient.On("Scope", mock.Anything, mock.Anything).Return(mockScope).Once()
-			mockScope.On("StartTimer", mock.Anything, mock.Anything).Return(testStopwatch).Once()
+			mockMetricClient.EXPECT().Scope(gomock.Any(), gomock.Any()).Return(mockScope).Times(1)
+			mockScope.EXPECT().StartTimer(gomock.Any()).Return(testStopwatch).Times(1)
 			test.pinotClientMockAffordance(mockPinotClient)
 			test.scopeMockAffordance(mockScope)
 
@@ -986,28 +985,28 @@ func TestMetricClientListWorkflowExecutions(t *testing.T) {
 	tests := map[string]struct {
 		request                   *p.ListWorkflowExecutionsByQueryRequest
 		pinotClientMockAffordance func(mockPinotClient *pnt.MockGenericClient)
-		scopeMockAffordance       func(mockScope *metricsClientMocks.Scope)
+		scopeMockAffordance       func(mockScope *metrics.MockScope)
 		expectedError             error
 	}{
-		"Case1: error case": {
+		"Case 1: error case": {
 			request: errorRequest,
 			pinotClientMockAffordance: func(mockPinotClient *pnt.MockGenericClient) {
 				mockPinotClient.EXPECT().GetTableName().Return(testTableName).Times(1)
 				mockPinotClient.EXPECT().Search(gomock.Any()).Return(nil, fmt.Errorf("error")).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Times(3)
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(2)
 			},
 			expectedError: fmt.Errorf("error"),
 		},
-		"Case2: normal case": {
+		"Case 2: normal case": {
 			request: request,
 			pinotClientMockAffordance: func(mockPinotClient *pnt.MockGenericClient) {
 				mockPinotClient.EXPECT().GetTableName().Return(testTableName).Times(1)
 				mockPinotClient.EXPECT().Search(gomock.Any()).Return(nil, nil).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Once()
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(1)
 			},
 			expectedError: nil,
 		},
@@ -1019,8 +1018,8 @@ func TestMetricClientListWorkflowExecutions(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			mockPinotClient := pnt.NewMockGenericClient(ctrl)
 			mockProducer := &mocks.KafkaProducer{}
-			mockMetricClient := &metricsClientMocks.Client{}
-			mockScope := &metricsClientMocks.Scope{}
+			mockMetricClient := metrics.NewMockClient(ctrl)
+			mockScope := metrics.NewMockScope(ctrl)
 
 			// create metricClient
 			logger := log.NewNoop()
@@ -1036,8 +1035,8 @@ func TestMetricClientListWorkflowExecutions(t *testing.T) {
 			metricsClient := visibilityMgr.(*pinotVisibilityMetricsClient)
 
 			// mock behaviors
-			mockMetricClient.On("Scope", mock.Anything, mock.Anything).Return(mockScope).Once()
-			mockScope.On("StartTimer", mock.Anything, mock.Anything).Return(testStopwatch).Once()
+			mockMetricClient.EXPECT().Scope(gomock.Any(), gomock.Any()).Return(mockScope).Times(1)
+			mockScope.EXPECT().StartTimer(gomock.Any()).Return(testStopwatch).Times(1)
 			test.pinotClientMockAffordance(mockPinotClient)
 			test.scopeMockAffordance(mockScope)
 
@@ -1054,28 +1053,28 @@ func TestMetricClientScanWorkflowExecutions(t *testing.T) {
 	tests := map[string]struct {
 		request                   *p.ListWorkflowExecutionsByQueryRequest
 		pinotClientMockAffordance func(mockPinotClient *pnt.MockGenericClient)
-		scopeMockAffordance       func(mockScope *metricsClientMocks.Scope)
+		scopeMockAffordance       func(mockScope *metrics.MockScope)
 		expectedError             error
 	}{
-		"Case1: error case": {
+		"Case 1: error case": {
 			request: errorRequest,
 			pinotClientMockAffordance: func(mockPinotClient *pnt.MockGenericClient) {
 				mockPinotClient.EXPECT().GetTableName().Return(testTableName).Times(1)
 				mockPinotClient.EXPECT().Search(gomock.Any()).Return(nil, fmt.Errorf("error")).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Times(3)
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(2)
 			},
 			expectedError: fmt.Errorf("error"),
 		},
-		"Case2: normal case": {
+		"Case 2: normal case": {
 			request: request,
 			pinotClientMockAffordance: func(mockPinotClient *pnt.MockGenericClient) {
 				mockPinotClient.EXPECT().GetTableName().Return(testTableName).Times(1)
 				mockPinotClient.EXPECT().Search(gomock.Any()).Return(nil, nil).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Once()
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(1)
 			},
 			expectedError: nil,
 		},
@@ -1087,8 +1086,8 @@ func TestMetricClientScanWorkflowExecutions(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			mockPinotClient := pnt.NewMockGenericClient(ctrl)
 			mockProducer := &mocks.KafkaProducer{}
-			mockMetricClient := &metricsClientMocks.Client{}
-			mockScope := &metricsClientMocks.Scope{}
+			mockMetricClient := metrics.NewMockClient(ctrl)
+			mockScope := metrics.NewMockScope(ctrl)
 
 			// create metricClient
 			logger := log.NewNoop()
@@ -1104,8 +1103,8 @@ func TestMetricClientScanWorkflowExecutions(t *testing.T) {
 			metricsClient := visibilityMgr.(*pinotVisibilityMetricsClient)
 
 			// mock behaviors
-			mockMetricClient.On("Scope", mock.Anything, mock.Anything).Return(mockScope).Once()
-			mockScope.On("StartTimer", mock.Anything, mock.Anything).Return(testStopwatch).Once()
+			mockMetricClient.EXPECT().Scope(gomock.Any(), gomock.Any()).Return(mockScope).Times(1)
+			mockScope.EXPECT().StartTimer(gomock.Any()).Return(testStopwatch).Times(1)
 			test.pinotClientMockAffordance(mockPinotClient)
 			test.scopeMockAffordance(mockScope)
 
@@ -1122,28 +1121,28 @@ func TestMetricClientCountWorkflowExecutions(t *testing.T) {
 	tests := map[string]struct {
 		request                   *p.CountWorkflowExecutionsRequest
 		pinotClientMockAffordance func(mockPinotClient *pnt.MockGenericClient)
-		scopeMockAffordance       func(mockScope *metricsClientMocks.Scope)
+		scopeMockAffordance       func(mockScope *metrics.MockScope)
 		expectedError             error
 	}{
-		"Case1: error case": {
+		"Case 1: error case": {
 			request: errorRequest,
 			pinotClientMockAffordance: func(mockPinotClient *pnt.MockGenericClient) {
 				mockPinotClient.EXPECT().GetTableName().Return(testTableName).Times(1)
 				mockPinotClient.EXPECT().CountByQuery(gomock.Any()).Return(int64(0), fmt.Errorf("error")).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Times(3)
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(2)
 			},
 			expectedError: fmt.Errorf("CountClosedWorkflowExecutions failed, error"),
 		},
-		"Case2: normal case": {
+		"Case 2: normal case": {
 			request: request,
 			pinotClientMockAffordance: func(mockPinotClient *pnt.MockGenericClient) {
 				mockPinotClient.EXPECT().GetTableName().Return(testTableName).Times(1)
 				mockPinotClient.EXPECT().CountByQuery(gomock.Any()).Return(int64(1), nil).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Once()
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(1)
 			},
 			expectedError: nil,
 		},
@@ -1155,8 +1154,8 @@ func TestMetricClientCountWorkflowExecutions(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			mockPinotClient := pnt.NewMockGenericClient(ctrl)
 			mockProducer := &mocks.KafkaProducer{}
-			mockMetricClient := &metricsClientMocks.Client{}
-			mockScope := &metricsClientMocks.Scope{}
+			mockMetricClient := metrics.NewMockClient(ctrl)
+			mockScope := metrics.NewMockScope(ctrl)
 
 			// create metricClient
 			logger := log.NewNoop()
@@ -1172,8 +1171,8 @@ func TestMetricClientCountWorkflowExecutions(t *testing.T) {
 			metricsClient := visibilityMgr.(*pinotVisibilityMetricsClient)
 
 			// mock behaviors
-			mockMetricClient.On("Scope", mock.Anything, mock.Anything).Return(mockScope).Once()
-			mockScope.On("StartTimer", mock.Anything, mock.Anything).Return(testStopwatch).Once()
+			mockMetricClient.EXPECT().Scope(gomock.Any(), gomock.Any()).Return(mockScope).Times(1)
+			mockScope.EXPECT().StartTimer(gomock.Any()).Return(testStopwatch).Times(1)
 			test.pinotClientMockAffordance(mockPinotClient)
 			test.scopeMockAffordance(mockScope)
 
@@ -1196,30 +1195,30 @@ func TestMetricClientDeleteWorkflowExecution(t *testing.T) {
 	tests := map[string]struct {
 		request                *p.VisibilityDeleteWorkflowExecutionRequest
 		producerMockAffordance func(mockProducer *mocks.KafkaProducer)
-		scopeMockAffordance    func(mockScope *metricsClientMocks.Scope)
+		scopeMockAffordance    func(mockScope *metrics.MockScope)
 		expectedError          error
 	}{
-		"Case1: error case": {
+		"Case 1: error case": {
 			request: errorRequest,
 			producerMockAffordance: func(mockProducer *mocks.KafkaProducer) {
 				mockProducer.On("Publish", mock.Anything, mock.MatchedBy(func(input *indexer.PinotMessage) bool {
 					return true
-				})).Return(fmt.Errorf("error")).Once()
+				})).Return(fmt.Errorf("error")).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Times(3)
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(2)
 			},
 			expectedError: fmt.Errorf("error"),
 		},
-		"Case2: normal case": {
+		"Case 2: normal case": {
 			request: request,
 			producerMockAffordance: func(mockProducer *mocks.KafkaProducer) {
 				mockProducer.On("Publish", mock.Anything, mock.MatchedBy(func(input *indexer.PinotMessage) bool {
 					return true
-				})).Return(nil).Once()
+				})).Return(nil).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Once()
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(1)
 			},
 			expectedError: nil,
 		},
@@ -1231,8 +1230,8 @@ func TestMetricClientDeleteWorkflowExecution(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			mockPinotClient := pnt.NewMockGenericClient(ctrl)
 			mockProducer := &mocks.KafkaProducer{}
-			mockMetricClient := &metricsClientMocks.Client{}
-			mockScope := &metricsClientMocks.Scope{}
+			mockMetricClient := metrics.NewMockClient(ctrl)
+			mockScope := metrics.NewMockScope(ctrl)
 
 			// create metricClient
 			logger := log.NewNoop()
@@ -1248,8 +1247,8 @@ func TestMetricClientDeleteWorkflowExecution(t *testing.T) {
 			metricsClient := visibilityMgr.(*pinotVisibilityMetricsClient)
 
 			// mock behaviors
-			mockMetricClient.On("Scope", mock.Anything, mock.Anything).Return(mockScope).Once()
-			mockScope.On("StartTimer", mock.Anything, mock.Anything).Return(testStopwatch).Once()
+			mockMetricClient.EXPECT().Scope(gomock.Any(), gomock.Any()).Return(mockScope).Times(1)
+			mockScope.EXPECT().StartTimer(gomock.Any()).Return(testStopwatch).Times(1)
 			test.producerMockAffordance(mockProducer)
 			test.scopeMockAffordance(mockScope)
 
@@ -1268,30 +1267,30 @@ func TestMetricClientDeleteUninitializedWorkflowExecution(t *testing.T) {
 	tests := map[string]struct {
 		request                *p.VisibilityDeleteWorkflowExecutionRequest
 		producerMockAffordance func(mockProducer *mocks.KafkaProducer)
-		scopeMockAffordance    func(mockScope *metricsClientMocks.Scope)
+		scopeMockAffordance    func(mockScope *metrics.MockScope)
 		expectedError          error
 	}{
-		"Case1: error case": {
+		"Case 1: error case": {
 			request: errorRequest,
 			producerMockAffordance: func(mockProducer *mocks.KafkaProducer) {
 				mockProducer.On("Publish", mock.Anything, mock.MatchedBy(func(input *indexer.PinotMessage) bool {
 					return true
-				})).Return(fmt.Errorf("error")).Once()
+				})).Return(fmt.Errorf("error")).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Times(3)
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(2)
 			},
 			expectedError: fmt.Errorf("error"),
 		},
-		"Case2: normal case": {
+		"Case 2: normal case": {
 			request: request,
 			producerMockAffordance: func(mockProducer *mocks.KafkaProducer) {
 				mockProducer.On("Publish", mock.Anything, mock.MatchedBy(func(input *indexer.PinotMessage) bool {
 					return true
-				})).Return(nil).Once()
+				})).Return(nil).Times(1)
 			},
-			scopeMockAffordance: func(mockScope *metricsClientMocks.Scope) {
-				mockScope.On("IncCounter", mock.Anything, mock.Anything, mock.Anything).Return().Once()
+			scopeMockAffordance: func(mockScope *metrics.MockScope) {
+				mockScope.EXPECT().IncCounter(gomock.Any()).Return().Times(1)
 			},
 			expectedError: nil,
 		},
@@ -1303,8 +1302,8 @@ func TestMetricClientDeleteUninitializedWorkflowExecution(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			mockPinotClient := pnt.NewMockGenericClient(ctrl)
 			mockProducer := &mocks.KafkaProducer{}
-			mockMetricClient := &metricsClientMocks.Client{}
-			mockScope := &metricsClientMocks.Scope{}
+			mockMetricClient := metrics.NewMockClient(ctrl)
+			mockScope := metrics.NewMockScope(ctrl)
 
 			// create metricClient
 			logger := log.NewNoop()
@@ -1320,8 +1319,8 @@ func TestMetricClientDeleteUninitializedWorkflowExecution(t *testing.T) {
 			metricsClient := visibilityMgr.(*pinotVisibilityMetricsClient)
 
 			// mock behaviors
-			mockMetricClient.On("Scope", mock.Anything, mock.Anything).Return(mockScope).Once()
-			mockScope.On("StartTimer", mock.Anything, mock.Anything).Return(testStopwatch).Once()
+			mockMetricClient.EXPECT().Scope(gomock.Any(), gomock.Any()).Return(mockScope).Times(1)
+			mockScope.EXPECT().StartTimer(gomock.Any()).Return(testStopwatch).Times(1)
 			test.producerMockAffordance(mockProducer)
 			test.scopeMockAffordance(mockScope)
 
@@ -1336,7 +1335,7 @@ func TestMetricClientClose(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockPinotClient := pnt.NewMockGenericClient(ctrl)
 	mockProducer := &mocks.KafkaProducer{}
-	mockMetricClient := &metricsClientMocks.Client{}
+	mockMetricClient := metrics.NewMockClient(ctrl)
 
 	// create metricClient
 	logger := log.NewNoop()
@@ -1353,7 +1352,6 @@ func TestMetricClientClose(t *testing.T) {
 
 	assert.NotPanics(t, func() {
 		metricsClient.Close()
-
 	})
 }
 
@@ -1362,7 +1360,7 @@ func TestMetricClientGetName(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockPinotClient := pnt.NewMockGenericClient(ctrl)
 	mockProducer := &mocks.KafkaProducer{}
-	mockMetricClient := &metricsClientMocks.Client{}
+	mockMetricClient := metrics.NewMockClient(ctrl)
 
 	// create metricClient
 	logger := log.NewNoop()
@@ -1379,6 +1377,5 @@ func TestMetricClientGetName(t *testing.T) {
 
 	assert.NotPanics(t, func() {
 		metricsClient.GetName()
-
 	})
 }

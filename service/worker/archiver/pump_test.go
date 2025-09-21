@@ -25,7 +25,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/cadence/testsuite"
 	"go.uber.org/cadence/workflow"
@@ -33,11 +32,10 @@ import (
 
 	"github.com/uber/cadence/common/log"
 	"github.com/uber/cadence/common/metrics"
-	mmocks "github.com/uber/cadence/common/metrics/mocks"
 )
 
 var (
-	pumpTestMetrics *mmocks.Client
+	pumpTestMetrics *metrics.MockClient
 	pumpTestLogger  *log.MockLogger
 )
 
@@ -58,17 +56,13 @@ func (s *pumpSuite) SetupSuite() {
 }
 
 func (s *pumpSuite) SetupTest() {
-	pumpTestMetrics = &mmocks.Client{}
-	pumpTestMetrics.On("StartTimer", mock.Anything, mock.Anything).Return(metrics.NopStopwatch()).Once()
+	pumpTestMetrics = metrics.NewMockClient(gomock.NewController(s.T()))
+	pumpTestMetrics.EXPECT().StartTimer(gomock.Any(), gomock.Any()).Return(metrics.NopStopwatch()).Times(1)
 	pumpTestLogger = log.NewMockLogger(gomock.NewController(s.T()))
 }
 
-func (s *pumpSuite) TearDownTest() {
-	pumpTestMetrics.AssertExpectations(s.T())
-}
-
 func (s *pumpSuite) TestPumpRun_CarryoverLargerThanLimit() {
-	pumpTestMetrics.On("UpdateGauge", metrics.ArchiverPumpScope, metrics.ArchiverBacklogSizeGauge, float64(1)).Once()
+	pumpTestMetrics.EXPECT().UpdateGauge(metrics.ArchiverPumpScope, metrics.ArchiverBacklogSizeGauge, float64(1)).Times(1)
 
 	env := s.NewTestWorkflowEnvironment()
 	env.ExecuteWorkflow(carryoverSatisfiesLimitWorkflow, 10, 11)
@@ -79,7 +73,7 @@ func (s *pumpSuite) TestPumpRun_CarryoverLargerThanLimit() {
 }
 
 func (s *pumpSuite) TestPumpRun_CarryoverExactlyMatchesLimit() {
-	pumpTestMetrics.On("UpdateGauge", metrics.ArchiverPumpScope, metrics.ArchiverBacklogSizeGauge, float64(0)).Once()
+	pumpTestMetrics.EXPECT().UpdateGauge(metrics.ArchiverPumpScope, metrics.ArchiverBacklogSizeGauge, float64(0)).Times(1)
 
 	env := s.NewTestWorkflowEnvironment()
 	env.ExecuteWorkflow(carryoverSatisfiesLimitWorkflow, 10, 10)
@@ -90,9 +84,9 @@ func (s *pumpSuite) TestPumpRun_CarryoverExactlyMatchesLimit() {
 }
 
 func (s *pumpSuite) TestPumpRun_TimeoutWithoutSignals() {
-	pumpTestMetrics.On("UpdateGauge", metrics.ArchiverPumpScope, metrics.ArchiverBacklogSizeGauge, float64(0)).Once()
-	pumpTestMetrics.On("IncCounter", metrics.ArchiverPumpScope, metrics.ArchiverPumpTimeoutCount).Once()
-	pumpTestMetrics.On("IncCounter", metrics.ArchiverPumpScope, metrics.ArchiverPumpTimeoutWithoutSignalsCount).Once()
+	pumpTestMetrics.EXPECT().UpdateGauge(metrics.ArchiverPumpScope, metrics.ArchiverBacklogSizeGauge, float64(0)).Times(1)
+	pumpTestMetrics.EXPECT().IncCounter(metrics.ArchiverPumpScope, metrics.ArchiverPumpTimeoutCount).Times(1)
+	pumpTestMetrics.EXPECT().IncCounter(metrics.ArchiverPumpScope, metrics.ArchiverPumpTimeoutWithoutSignalsCount).Times(1)
 
 	env := s.NewTestWorkflowEnvironment()
 	env.ExecuteWorkflow(pumpWorkflow, 10, 0)
@@ -103,8 +97,8 @@ func (s *pumpSuite) TestPumpRun_TimeoutWithoutSignals() {
 }
 
 func (s *pumpSuite) TestPumpRun_TimeoutWithSignals() {
-	pumpTestMetrics.On("UpdateGauge", metrics.ArchiverPumpScope, metrics.ArchiverBacklogSizeGauge, float64(0)).Once()
-	pumpTestMetrics.On("IncCounter", metrics.ArchiverPumpScope, metrics.ArchiverPumpTimeoutCount).Once()
+	pumpTestMetrics.EXPECT().UpdateGauge(metrics.ArchiverPumpScope, metrics.ArchiverBacklogSizeGauge, float64(0)).Times(1)
+	pumpTestMetrics.EXPECT().IncCounter(metrics.ArchiverPumpScope, metrics.ArchiverPumpTimeoutCount).Times(1)
 
 	env := s.NewTestWorkflowEnvironment()
 	env.ExecuteWorkflow(pumpWorkflow, 10, 5)
@@ -115,8 +109,8 @@ func (s *pumpSuite) TestPumpRun_TimeoutWithSignals() {
 }
 
 func (s *pumpSuite) TestPumpRun_SignalsGottenSatisfyLimit() {
-	pumpTestMetrics.On("UpdateGauge", metrics.ArchiverPumpScope, metrics.ArchiverBacklogSizeGauge, float64(0)).Once()
-	pumpTestMetrics.On("IncCounter", metrics.ArchiverPumpScope, metrics.ArchiverPumpSignalThresholdCount).Once()
+	pumpTestMetrics.EXPECT().UpdateGauge(metrics.ArchiverPumpScope, metrics.ArchiverBacklogSizeGauge, float64(0)).Times(1)
+	pumpTestMetrics.EXPECT().IncCounter(metrics.ArchiverPumpScope, metrics.ArchiverPumpSignalThresholdCount).Times(1)
 
 	env := s.NewTestWorkflowEnvironment()
 	env.ExecuteWorkflow(pumpWorkflow, 10, 10)
@@ -127,8 +121,8 @@ func (s *pumpSuite) TestPumpRun_SignalsGottenSatisfyLimit() {
 }
 
 func (s *pumpSuite) TestPumpRun_SignalsAndCarryover() {
-	pumpTestMetrics.On("UpdateGauge", metrics.ArchiverPumpScope, metrics.ArchiverBacklogSizeGauge, float64(0)).Once()
-	pumpTestMetrics.On("IncCounter", metrics.ArchiverPumpScope, metrics.ArchiverPumpSignalThresholdCount).Once()
+	pumpTestMetrics.EXPECT().UpdateGauge(metrics.ArchiverPumpScope, metrics.ArchiverBacklogSizeGauge, float64(0)).Times(1)
+	pumpTestMetrics.EXPECT().IncCounter(metrics.ArchiverPumpScope, metrics.ArchiverPumpSignalThresholdCount).Times(1)
 
 	env := s.NewTestWorkflowEnvironment()
 	env.ExecuteWorkflow(signalAndCarryoverPumpWorkflow, 10, 5, 5)
@@ -139,8 +133,8 @@ func (s *pumpSuite) TestPumpRun_SignalsAndCarryover() {
 }
 
 func (s *pumpSuite) TestPumpRun_SignalChannelClosedUnexpectedly() {
-	pumpTestMetrics.On("UpdateGauge", metrics.ArchiverPumpScope, metrics.ArchiverBacklogSizeGauge, float64(0)).Once()
-	pumpTestMetrics.On("IncCounter", metrics.ArchiverPumpScope, metrics.ArchiverPumpSignalChannelClosedCount).Once()
+	pumpTestMetrics.EXPECT().UpdateGauge(metrics.ArchiverPumpScope, metrics.ArchiverBacklogSizeGauge, float64(0)).Times(1)
+	pumpTestMetrics.EXPECT().IncCounter(metrics.ArchiverPumpScope, metrics.ArchiverPumpSignalChannelClosedCount).Times(1)
 	pumpTestLogger.EXPECT().Error(gomock.Any(), gomock.Any()).Times(1)
 
 	env := s.NewTestWorkflowEnvironment()

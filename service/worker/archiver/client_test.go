@@ -38,7 +38,6 @@ import (
 	"github.com/uber/cadence/common/dynamicconfig/dynamicproperties"
 	"github.com/uber/cadence/common/log"
 	"github.com/uber/cadence/common/metrics"
-	mmocks "github.com/uber/cadence/common/metrics/mocks"
 )
 
 type clientSuite struct {
@@ -49,8 +48,8 @@ type clientSuite struct {
 	archiverProvider   *provider.MockArchiverProvider
 	historyArchiver    *carchiver.HistoryArchiverMock
 	visibilityArchiver *carchiver.VisibilityArchiverMock
-	metricsClient      *mmocks.Client
-	metricsScope       *mmocks.Scope
+	metricsClient      *metrics.MockClient
+	metricsScope       *metrics.MockScope
 	cadenceClient      *mocks.Client
 	client             *client
 }
@@ -65,10 +64,10 @@ func (s *clientSuite) SetupTest() {
 	s.archiverProvider = provider.NewMockArchiverProvider(s.controller)
 	s.historyArchiver = &carchiver.HistoryArchiverMock{}
 	s.visibilityArchiver = &carchiver.VisibilityArchiverMock{}
-	s.metricsClient = &mmocks.Client{}
-	s.metricsScope = &mmocks.Scope{}
+	s.metricsClient = metrics.NewMockClient(s.controller)
+	s.metricsScope = metrics.NewMockScope(s.controller)
 	s.cadenceClient = &mocks.Client{}
-	s.metricsClient.On("Scope", metrics.ArchiverClientScope, mock.Anything).Return(s.metricsScope).Once()
+	s.metricsClient.EXPECT().Scope(metrics.ArchiverClientScope, gomock.Any()).Return(s.metricsScope).Times(1)
 	s.client = NewClient(
 		s.metricsClient,
 		log.NewNoop(),
@@ -86,17 +85,15 @@ func (s *clientSuite) SetupTest() {
 func (s *clientSuite) TearDownTest() {
 	s.historyArchiver.AssertExpectations(s.T())
 	s.visibilityArchiver.AssertExpectations(s.T())
-	s.metricsClient.AssertExpectations(s.T())
-	s.metricsScope.AssertExpectations(s.T())
 }
 
 func (s *clientSuite) TestArchiveVisibilityInlineSuccess() {
-	scopeDomain := &mmocks.Scope{}
+	scopeDomain := metrics.NewMockScope(s.controller)
 	s.archiverProvider.EXPECT().GetVisibilityArchiver(gomock.Any(), gomock.Any()).Return(s.visibilityArchiver, nil).Times(1)
 	s.visibilityArchiver.On("Archive", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	s.metricsScope.On("Tagged", mock.Anything).Return(scopeDomain)
-	scopeDomain.On("IncCounter", metrics.ArchiverClientVisibilityRequestCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientVisibilityInlineArchiveAttemptCountPerDomain).Once()
+	s.metricsScope.EXPECT().Tagged(gomock.Any()).Return(scopeDomain).AnyTimes()
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientVisibilityRequestCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientVisibilityInlineArchiveAttemptCountPerDomain).Times(1)
 	resp, err := s.client.Archive(context.Background(), &ClientRequest{
 		ArchiveRequest: &ArchiveRequest{
 			VisibilityURI: "test:///visibility/archival",
@@ -111,14 +108,14 @@ func (s *clientSuite) TestArchiveVisibilityInlineSuccess() {
 }
 
 func (s *clientSuite) TestArchiveVisibilityInlineThrottled() {
-	scopeDomain := &mmocks.Scope{}
+	scopeDomain := metrics.NewMockScope(s.controller)
 	s.archiverProvider.EXPECT().GetVisibilityArchiver(gomock.Any(), gomock.Any()).Return(s.visibilityArchiver, nil).Times(1)
 	s.visibilityArchiver.On("Archive", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	s.metricsScope.On("Tagged", mock.Anything).Return(scopeDomain)
-	scopeDomain.On("IncCounter", metrics.ArchiverClientVisibilityRequestCountPerDomain).Times(2)
-	scopeDomain.On("IncCounter", metrics.ArchiverClientVisibilityInlineArchiveAttemptCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientVisibilityInlineArchiveThrottledCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientSendSignalCountPerDomain).Once()
+	s.metricsScope.EXPECT().Tagged(gomock.Any()).Return(scopeDomain).AnyTimes()
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientVisibilityRequestCountPerDomain).Times(2)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientVisibilityInlineArchiveAttemptCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientVisibilityInlineArchiveThrottledCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientSendSignalCountPerDomain).Times(1)
 	s.cadenceClient.On("SignalWithStartWorkflow", mock.Anything, mock.Anything, mock.Anything, mock.MatchedBy(func(v ArchiveRequest) bool {
 		return len(v.Targets) == 1 && v.Targets[0] == ArchiveTargetVisibility
 	}), mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
@@ -138,14 +135,14 @@ func (s *clientSuite) TestArchiveVisibilityInlineThrottled() {
 }
 
 func (s *clientSuite) TestArchiveVisibilityInlineFail_SendSignalSuccess() {
-	scopeDomain := &mmocks.Scope{}
+	scopeDomain := metrics.NewMockScope(s.controller)
 	s.archiverProvider.EXPECT().GetVisibilityArchiver(gomock.Any(), gomock.Any()).Return(s.visibilityArchiver, nil).Times(1)
 	s.visibilityArchiver.On("Archive", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("some random error")).Once()
-	s.metricsScope.On("Tagged", mock.Anything).Return(scopeDomain)
-	scopeDomain.On("IncCounter", metrics.ArchiverClientVisibilityRequestCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientVisibilityInlineArchiveAttemptCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientVisibilityInlineArchiveFailureCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientSendSignalCountPerDomain).Once()
+	s.metricsScope.EXPECT().Tagged(gomock.Any()).Return(scopeDomain).AnyTimes()
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientVisibilityRequestCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientVisibilityInlineArchiveAttemptCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientVisibilityInlineArchiveFailureCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientSendSignalCountPerDomain).Times(1)
 	s.cadenceClient.On("SignalWithStartWorkflow", mock.Anything, mock.Anything, mock.Anything, mock.MatchedBy(func(v ArchiveRequest) bool {
 		return len(v.Targets) == 1 && v.Targets[0] == ArchiveTargetVisibility
 	}), mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
@@ -164,15 +161,15 @@ func (s *clientSuite) TestArchiveVisibilityInlineFail_SendSignalSuccess() {
 }
 
 func (s *clientSuite) TestArchiveVisibilityInlineFail_SendSignalFail() {
-	scopeDomain := &mmocks.Scope{}
+	scopeDomain := metrics.NewMockScope(s.controller)
 	s.archiverProvider.EXPECT().GetVisibilityArchiver(gomock.Any(), gomock.Any()).Return(s.visibilityArchiver, nil).Times(1)
 	s.visibilityArchiver.On("Archive", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("some random error")).Once()
-	s.metricsScope.On("Tagged", mock.Anything).Return(scopeDomain)
-	scopeDomain.On("IncCounter", metrics.ArchiverClientVisibilityRequestCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientVisibilityInlineArchiveAttemptCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientVisibilityInlineArchiveFailureCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientSendSignalCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientSendSignalFailureCountPerDomain).Once()
+	s.metricsScope.EXPECT().Tagged(gomock.Any()).Return(scopeDomain).AnyTimes()
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientVisibilityRequestCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientVisibilityInlineArchiveAttemptCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientVisibilityInlineArchiveFailureCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientSendSignalCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientSendSignalFailureCountPerDomain).Times(1)
 	s.cadenceClient.On("SignalWithStartWorkflow", mock.Anything, mock.Anything, mock.Anything, mock.MatchedBy(func(v ArchiveRequest) bool {
 		return len(v.Targets) == 1 && v.Targets[0] == ArchiveTargetVisibility
 	}), mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("some random error"))
@@ -190,12 +187,12 @@ func (s *clientSuite) TestArchiveVisibilityInlineFail_SendSignalFail() {
 }
 
 func (s *clientSuite) TestArchiveHistoryInlineSuccess() {
-	scopeDomain := &mmocks.Scope{}
+	scopeDomain := metrics.NewMockScope(s.controller)
 	s.archiverProvider.EXPECT().GetHistoryArchiver(gomock.Any(), gomock.Any()).Return(s.historyArchiver, nil).Times(1)
 	s.historyArchiver.On("Archive", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	s.metricsScope.On("Tagged", mock.Anything).Return(scopeDomain)
-	scopeDomain.On("IncCounter", metrics.ArchiverClientHistoryRequestCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientHistoryInlineArchiveAttemptCountPerDomain).Once()
+	s.metricsScope.EXPECT().Tagged(gomock.Any()).Return(scopeDomain).AnyTimes()
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientHistoryRequestCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientHistoryInlineArchiveAttemptCountPerDomain).Times(1)
 	resp, err := s.client.Archive(context.Background(), &ClientRequest{
 		ArchiveRequest: &ArchiveRequest{
 			URI:        "test:///history/archival",
@@ -210,14 +207,14 @@ func (s *clientSuite) TestArchiveHistoryInlineSuccess() {
 }
 
 func (s *clientSuite) TestArchiveHistoryInlineThrottled() {
-	scopeDomain := &mmocks.Scope{}
+	scopeDomain := metrics.NewMockScope(s.controller)
 	s.archiverProvider.EXPECT().GetHistoryArchiver(gomock.Any(), gomock.Any()).Return(s.historyArchiver, nil).Times(1)
 	s.historyArchiver.On("Archive", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	s.metricsScope.On("Tagged", mock.Anything).Return(scopeDomain)
-	scopeDomain.On("IncCounter", metrics.ArchiverClientHistoryRequestCountPerDomain).Times(2)
-	scopeDomain.On("IncCounter", metrics.ArchiverClientHistoryInlineArchiveAttemptCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientHistoryInlineArchiveThrottledCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientSendSignalCountPerDomain).Once()
+	s.metricsScope.EXPECT().Tagged(gomock.Any()).Return(scopeDomain).AnyTimes()
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientHistoryRequestCountPerDomain).Times(2)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientHistoryInlineArchiveAttemptCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientHistoryInlineArchiveThrottledCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientSendSignalCountPerDomain).Times(1)
 	s.cadenceClient.On("SignalWithStartWorkflow", mock.Anything, mock.Anything, mock.Anything, mock.MatchedBy(func(v ArchiveRequest) bool {
 		return len(v.Targets) == 1 && v.Targets[0] == ArchiveTargetHistory
 	}), mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
@@ -237,14 +234,14 @@ func (s *clientSuite) TestArchiveHistoryInlineThrottled() {
 }
 
 func (s *clientSuite) TestArchiveHistoryInlineFail_SendSignalSuccess() {
-	scopeDomain := &mmocks.Scope{}
+	scopeDomain := metrics.NewMockScope(s.controller)
 	s.archiverProvider.EXPECT().GetHistoryArchiver(gomock.Any(), gomock.Any()).Return(s.historyArchiver, nil).Times(1)
 	s.historyArchiver.On("Archive", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("some random error")).Once()
-	s.metricsScope.On("Tagged", mock.Anything).Return(scopeDomain)
-	scopeDomain.On("IncCounter", metrics.ArchiverClientHistoryRequestCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientHistoryInlineArchiveAttemptCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientHistoryInlineArchiveFailureCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientSendSignalCountPerDomain).Once()
+	s.metricsScope.EXPECT().Tagged(gomock.Any()).Return(scopeDomain).AnyTimes()
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientHistoryRequestCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientHistoryInlineArchiveAttemptCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientHistoryInlineArchiveFailureCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientSendSignalCountPerDomain).Times(1)
 	s.cadenceClient.On("SignalWithStartWorkflow", mock.Anything, mock.Anything, mock.Anything, mock.MatchedBy(func(v ArchiveRequest) bool {
 		return len(v.Targets) == 1 && v.Targets[0] == ArchiveTargetHistory
 	}), mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
@@ -263,15 +260,15 @@ func (s *clientSuite) TestArchiveHistoryInlineFail_SendSignalSuccess() {
 }
 
 func (s *clientSuite) TestArchiveHistoryInlineFail_SendSignalFail() {
-	scopeDomain := &mmocks.Scope{}
+	scopeDomain := metrics.NewMockScope(s.controller)
 	s.archiverProvider.EXPECT().GetHistoryArchiver(gomock.Any(), gomock.Any()).Return(s.historyArchiver, nil).Times(1)
 	s.historyArchiver.On("Archive", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("some random error")).Once()
-	s.metricsScope.On("Tagged", mock.Anything).Return(scopeDomain)
-	scopeDomain.On("IncCounter", metrics.ArchiverClientHistoryRequestCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientHistoryInlineArchiveAttemptCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientHistoryInlineArchiveFailureCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientSendSignalCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientSendSignalFailureCountPerDomain).Once()
+	s.metricsScope.EXPECT().Tagged(gomock.Any()).Return(scopeDomain).AnyTimes()
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientHistoryRequestCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientHistoryInlineArchiveAttemptCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientHistoryInlineArchiveFailureCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientSendSignalCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientSendSignalFailureCountPerDomain).Times(1)
 	s.cadenceClient.On("SignalWithStartWorkflow", mock.Anything, mock.Anything, mock.Anything, mock.MatchedBy(func(v ArchiveRequest) bool {
 		return len(v.Targets) == 1 && v.Targets[0] == ArchiveTargetHistory
 	}), mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("some random error"))
@@ -289,18 +286,18 @@ func (s *clientSuite) TestArchiveHistoryInlineFail_SendSignalFail() {
 }
 
 func (s *clientSuite) TestArchiveInline_HistoryFail_VisibilitySuccess() {
-	scopeDomain := &mmocks.Scope{}
+	scopeDomain := metrics.NewMockScope(s.controller)
 	s.archiverProvider.EXPECT().GetHistoryArchiver(gomock.Any(), gomock.Any()).Return(s.historyArchiver, nil).Times(1)
 	s.archiverProvider.EXPECT().GetVisibilityArchiver(gomock.Any(), gomock.Any()).Return(s.visibilityArchiver, nil).Times(1)
 	s.historyArchiver.On("Archive", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("some random error")).Once()
-	s.visibilityArchiver.On("Archive", mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	s.metricsScope.On("Tagged", mock.Anything).Return(scopeDomain)
-	scopeDomain.On("IncCounter", metrics.ArchiverClientHistoryRequestCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientHistoryInlineArchiveAttemptCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientHistoryInlineArchiveFailureCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientVisibilityRequestCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientVisibilityInlineArchiveAttemptCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientSendSignalCountPerDomain).Once()
+	s.visibilityArchiver.On("Archive", mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(1)
+	s.metricsScope.EXPECT().Tagged(gomock.Any()).Return(scopeDomain).AnyTimes()
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientHistoryRequestCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientHistoryInlineArchiveAttemptCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientHistoryInlineArchiveFailureCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientVisibilityRequestCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientVisibilityInlineArchiveAttemptCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientSendSignalCountPerDomain).Times(1)
 	s.cadenceClient.On("SignalWithStartWorkflow", mock.Anything, mock.Anything, mock.Anything, mock.MatchedBy(func(v ArchiveRequest) bool {
 		return len(v.Targets) == 1 && v.Targets[0] == ArchiveTargetHistory
 	}), mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
@@ -320,18 +317,18 @@ func (s *clientSuite) TestArchiveInline_HistoryFail_VisibilitySuccess() {
 }
 
 func (s *clientSuite) TestArchiveInline_VisibilityFail_HistorySuccess() {
-	scopeDomain := &mmocks.Scope{}
+	scopeDomain := metrics.NewMockScope(s.controller)
 	s.archiverProvider.EXPECT().GetHistoryArchiver(gomock.Any(), gomock.Any()).Return(s.historyArchiver, nil).Times(1)
 	s.archiverProvider.EXPECT().GetVisibilityArchiver(gomock.Any(), gomock.Any()).Return(s.visibilityArchiver, nil).Times(1)
 	s.historyArchiver.On("Archive", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	s.visibilityArchiver.On("Archive", mock.Anything, mock.Anything, mock.Anything).Return(errors.New("some random error")).Once()
-	s.metricsScope.On("Tagged", mock.Anything).Return(scopeDomain)
-	scopeDomain.On("IncCounter", metrics.ArchiverClientHistoryRequestCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientHistoryInlineArchiveAttemptCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientVisibilityRequestCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientVisibilityInlineArchiveAttemptCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientVisibilityInlineArchiveFailureCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientSendSignalCountPerDomain).Once()
+	s.visibilityArchiver.On("Archive", mock.Anything, mock.Anything, mock.Anything).Return(errors.New("some random error")).Times(1)
+	s.metricsScope.EXPECT().Tagged(gomock.Any()).Return(scopeDomain).AnyTimes()
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientHistoryRequestCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientHistoryInlineArchiveAttemptCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientVisibilityRequestCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientVisibilityInlineArchiveAttemptCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientVisibilityInlineArchiveFailureCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientSendSignalCountPerDomain).Times(1)
 	s.cadenceClient.On("SignalWithStartWorkflow", mock.Anything, mock.Anything, mock.Anything, mock.MatchedBy(func(v ArchiveRequest) bool {
 		return len(v.Targets) == 1 && v.Targets[0] == ArchiveTargetVisibility
 	}), mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
@@ -351,19 +348,19 @@ func (s *clientSuite) TestArchiveInline_VisibilityFail_HistorySuccess() {
 }
 
 func (s *clientSuite) TestArchiveInline_VisibilityFail_HistoryFail() {
-	scopeDomain := &mmocks.Scope{}
+	scopeDomain := metrics.NewMockScope(s.controller)
 	s.archiverProvider.EXPECT().GetHistoryArchiver(gomock.Any(), gomock.Any()).Return(s.historyArchiver, nil).Times(1)
 	s.archiverProvider.EXPECT().GetVisibilityArchiver(gomock.Any(), gomock.Any()).Return(s.visibilityArchiver, nil).Times(1)
 	s.historyArchiver.On("Archive", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("some random error")).Once()
 	s.visibilityArchiver.On("Archive", mock.Anything, mock.Anything, mock.Anything).Return(errors.New("some random error")).Once()
-	s.metricsScope.On("Tagged", mock.Anything).Return(scopeDomain)
-	scopeDomain.On("IncCounter", metrics.ArchiverClientHistoryRequestCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientHistoryInlineArchiveAttemptCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientHistoryInlineArchiveFailureCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientVisibilityRequestCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientVisibilityInlineArchiveAttemptCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientVisibilityInlineArchiveFailureCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientSendSignalCountPerDomain).Once()
+	s.metricsScope.EXPECT().Tagged(gomock.Any()).Return(scopeDomain).AnyTimes()
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientHistoryRequestCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientHistoryInlineArchiveAttemptCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientHistoryInlineArchiveFailureCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientVisibilityRequestCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientVisibilityInlineArchiveAttemptCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientVisibilityInlineArchiveFailureCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientSendSignalCountPerDomain).Times(1)
 	s.cadenceClient.On("SignalWithStartWorkflow", mock.Anything, mock.Anything, mock.Anything, mock.MatchedBy(func(v ArchiveRequest) bool {
 		return len(v.Targets) == 2
 	}), mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
@@ -383,16 +380,16 @@ func (s *clientSuite) TestArchiveInline_VisibilityFail_HistoryFail() {
 }
 
 func (s *clientSuite) TestArchiveInline_VisibilitySuccess_HistorySuccess() {
-	scopeDomain := &mmocks.Scope{}
+	scopeDomain := metrics.NewMockScope(s.controller)
 	s.archiverProvider.EXPECT().GetHistoryArchiver(gomock.Any(), gomock.Any()).Return(s.historyArchiver, nil).Times(1)
 	s.archiverProvider.EXPECT().GetVisibilityArchiver(gomock.Any(), gomock.Any()).Return(s.visibilityArchiver, nil).Times(1)
 	s.historyArchiver.On("Archive", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 	s.visibilityArchiver.On("Archive", mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	s.metricsScope.On("Tagged", mock.Anything).Return(scopeDomain)
-	scopeDomain.On("IncCounter", metrics.ArchiverClientHistoryRequestCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientHistoryInlineArchiveAttemptCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientVisibilityRequestCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientVisibilityInlineArchiveAttemptCountPerDomain).Once()
+	s.metricsScope.EXPECT().Tagged(gomock.Any()).Return(scopeDomain).AnyTimes()
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientHistoryRequestCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientHistoryInlineArchiveAttemptCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientVisibilityRequestCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientVisibilityInlineArchiveAttemptCountPerDomain).Times(1)
 	resp, err := s.client.Archive(context.Background(), &ClientRequest{
 		ArchiveRequest: &ArchiveRequest{
 			URI:           "test:///history/archival",
@@ -408,14 +405,14 @@ func (s *clientSuite) TestArchiveInline_VisibilitySuccess_HistorySuccess() {
 }
 
 func (s *clientSuite) TestArchiveSendSignal_Success() {
-	scopeDomain := &mmocks.Scope{}
+	scopeDomain := metrics.NewMockScope(s.controller)
 	s.cadenceClient.On("SignalWithStartWorkflow", mock.Anything, mock.Anything, mock.Anything, mock.MatchedBy(func(v ArchiveRequest) bool {
 		return len(v.Targets) == 2
 	}), mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
-	s.metricsScope.On("Tagged", mock.Anything).Return(scopeDomain)
-	scopeDomain.On("IncCounter", metrics.ArchiverClientHistoryRequestCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientVisibilityRequestCountPerDomain).Once()
-	scopeDomain.On("IncCounter", metrics.ArchiverClientSendSignalCountPerDomain).Once()
+	s.metricsScope.EXPECT().Tagged(gomock.Any()).Return(scopeDomain).AnyTimes()
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientHistoryRequestCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientVisibilityRequestCountPerDomain).Times(1)
+	scopeDomain.EXPECT().IncCounter(metrics.ArchiverClientSendSignalCountPerDomain).Times(1)
 	resp, err := s.client.Archive(context.Background(), &ClientRequest{
 		ArchiveRequest: &ArchiveRequest{
 			URI:           "test:///history/archival",
@@ -431,7 +428,7 @@ func (s *clientSuite) TestArchiveSendSignal_Success() {
 }
 
 func (s *clientSuite) TestArchiveUnknownTarget() {
-	s.metricsScope.On("Tagged", mock.Anything).Return(&mmocks.Scope{})
+	s.metricsScope.EXPECT().Tagged(gomock.Any()).Return(metrics.NewMockScope(s.controller))
 	resp, err := s.client.Archive(context.Background(), &ClientRequest{
 		ArchiveRequest: &ArchiveRequest{
 			Targets: []ArchivalTarget{3},

@@ -451,7 +451,7 @@ func (v *pinotVisibilityStore) GetClosedWorkflowExecution(ctx context.Context, r
 
 	if err != nil {
 		return nil, &types.InternalServiceError{
-			Message: fmt.Sprintf("Pinot GetClosedWorkflowExecution failed, %v", err),
+			Message: fmt.Sprintf("pinot GetClosedWorkflowExecution failed, %v", err),
 		}
 	}
 

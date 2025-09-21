@@ -22,18 +22,19 @@ package persistencetests
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+	"go.uber.org/mock/gomock"
 
 	"github.com/uber/cadence/common/clock"
 	"github.com/uber/cadence/common/dynamicconfig/dynamicproperties"
 	"github.com/uber/cadence/common/log/testlogger"
 	"github.com/uber/cadence/common/metrics"
-	mmocks "github.com/uber/cadence/common/metrics/mocks"
 	"github.com/uber/cadence/common/mocks"
 	p "github.com/uber/cadence/common/persistence"
 	"github.com/uber/cadence/common/persistence/wrappers/sampled"
@@ -45,7 +46,7 @@ type VisibilitySamplingSuite struct {
 	suite.Suite
 	client       p.VisibilityManager
 	persistence  *mocks.VisibilityManager
-	metricClient *mmocks.Client
+	metricClient *metrics.MockClient
 }
 
 var (
@@ -73,7 +74,7 @@ func (s *VisibilitySamplingSuite) SetupTest() {
 		VisibilityClosedMaxQPS: dynamicproperties.GetIntPropertyFilteredByDomain(10),
 		VisibilityListMaxQPS:   dynamicproperties.GetIntPropertyFilteredByDomain(1),
 	}
-	s.metricClient = &mmocks.Client{}
+	s.metricClient = metrics.NewMockClient(gomock.NewController(s.T()))
 	s.client = sampled.NewVisibilityManager(s.persistence, sampled.Params{
 		Config:                 config,
 		MetricClient:           s.metricClient,
@@ -85,10 +86,23 @@ func (s *VisibilitySamplingSuite) SetupTest() {
 
 func (s *VisibilitySamplingSuite) TearDownTest() {
 	s.persistence.AssertExpectations(s.T())
-	s.metricClient.AssertExpectations(s.T())
 }
 
-func (s *VisibilitySamplingSuite) TestRecordWorkflowExecutionStarted() {
+func TestRecordWorkflowExecutionStarted(t *testing.T) {
+	persistence := &mocks.VisibilityManager{}
+	config := &sampled.Config{
+		VisibilityOpenMaxQPS:   dynamicproperties.GetIntPropertyFilteredByDomain(1),
+		VisibilityClosedMaxQPS: dynamicproperties.GetIntPropertyFilteredByDomain(10),
+		VisibilityListMaxQPS:   dynamicproperties.GetIntPropertyFilteredByDomain(1),
+	}
+	metricClient := metrics.NewMockClient(gomock.NewController(t))
+	client := sampled.NewVisibilityManager(persistence, sampled.Params{
+		Config:                 config,
+		MetricClient:           metricClient,
+		Logger:                 testlogger.New(t),
+		TimeSource:             clock.NewRealTimeSource(),
+		RateLimiterFactoryFunc: sampled.NewDomainToBucketMap,
+	})
 	ctx, cancel := context.WithTimeout(context.Background(), testContextTimeout)
 	defer cancel()
 
@@ -99,12 +113,12 @@ func (s *VisibilitySamplingSuite) TestRecordWorkflowExecutionStarted() {
 		WorkflowTypeName: testWorkflowTypeName,
 		StartTimestamp:   time.Now().UnixNano(),
 	}
-	s.persistence.On("RecordWorkflowExecutionStarted", mock.Anything, request).Return(nil).Once()
-	s.NoError(s.client.RecordWorkflowExecutionStarted(ctx, request))
+	persistence.On("RecordWorkflowExecutionStarted", mock.Anything, request).Return(nil).Once()
+	require.NoError(t, client.RecordWorkflowExecutionStarted(ctx, request))
 
 	// no remaining tokens
-	s.metricClient.On("IncCounter", metrics.PersistenceRecordWorkflowExecutionStartedScope, metrics.PersistenceSampledCounter).Once()
-	s.NoError(s.client.RecordWorkflowExecutionStarted(ctx, request))
+	metricClient.EXPECT().IncCounter(metrics.PersistenceRecordWorkflowExecutionStartedScope, metrics.PersistenceSampledCounter).Times(1)
+	require.NoError(t, client.RecordWorkflowExecutionStarted(ctx, request))
 }
 
 func (s *VisibilitySamplingSuite) TestRecordWorkflowExecutionClosed() {
@@ -132,9 +146,9 @@ func (s *VisibilitySamplingSuite) TestRecordWorkflowExecutionClosed() {
 	s.NoError(s.client.RecordWorkflowExecutionClosed(ctx, request2))
 
 	// no remaining tokens
-	s.metricClient.On("IncCounter", metrics.PersistenceRecordWorkflowExecutionClosedScope, metrics.PersistenceSampledCounter).Once()
+	s.metricClient.EXPECT().IncCounter(metrics.PersistenceRecordWorkflowExecutionClosedScope, metrics.PersistenceSampledCounter).Times(1)
 	s.NoError(s.client.RecordWorkflowExecutionClosed(ctx, request))
-	s.metricClient.On("IncCounter", metrics.PersistenceRecordWorkflowExecutionClosedScope, metrics.PersistenceSampledCounter).Once()
+	s.metricClient.EXPECT().IncCounter(metrics.PersistenceRecordWorkflowExecutionClosedScope, metrics.PersistenceSampledCounter).Times(1)
 	s.NoError(s.client.RecordWorkflowExecutionClosed(ctx, request2))
 }
 
@@ -153,7 +167,8 @@ func (s *VisibilitySamplingSuite) TestListOpenWorkflowExecutions() {
 	// no remaining tokens
 	_, err = s.client.ListOpenWorkflowExecutions(ctx, request)
 	s.Error(err)
-	errDetail, ok := err.(*types.ServiceBusyError)
+	var errDetail *types.ServiceBusyError
+	ok := errors.As(err, &errDetail)
 	s.True(ok)
 	s.Equal(listErrMsg, errDetail.Message)
 }
@@ -173,7 +188,8 @@ func (s *VisibilitySamplingSuite) TestListClosedWorkflowExecutions() {
 	// no remaining tokens
 	_, err = s.client.ListClosedWorkflowExecutions(ctx, request)
 	s.Error(err)
-	errDetail, ok := err.(*types.ServiceBusyError)
+	var errDetail *types.ServiceBusyError
+	ok := errors.As(err, &errDetail)
 	s.True(ok)
 	s.Equal(listErrMsg, errDetail.Message)
 }
@@ -197,7 +213,8 @@ func (s *VisibilitySamplingSuite) TestListOpenWorkflowExecutionsByType() {
 	// no remaining tokens
 	_, err = s.client.ListOpenWorkflowExecutionsByType(ctx, request)
 	s.Error(err)
-	errDetail, ok := err.(*types.ServiceBusyError)
+	var errDetail *types.ServiceBusyError
+	ok := errors.As(err, &errDetail)
 	s.True(ok)
 	s.Equal(listErrMsg, errDetail.Message)
 }
@@ -221,7 +238,8 @@ func (s *VisibilitySamplingSuite) TestListClosedWorkflowExecutionsByType() {
 	// no remaining tokens
 	_, err = s.client.ListClosedWorkflowExecutionsByType(ctx, request)
 	s.Error(err)
-	errDetail, ok := err.(*types.ServiceBusyError)
+	var errDetail *types.ServiceBusyError
+	ok := errors.As(err, &errDetail)
 	s.True(ok)
 	s.Equal(listErrMsg, errDetail.Message)
 }
@@ -245,7 +263,8 @@ func (s *VisibilitySamplingSuite) TestListOpenWorkflowExecutionsByWorkflowID() {
 	// no remaining tokens
 	_, err = s.client.ListOpenWorkflowExecutionsByWorkflowID(ctx, request)
 	s.Error(err)
-	errDetail, ok := err.(*types.ServiceBusyError)
+	var errDetail *types.ServiceBusyError
+	ok := errors.As(err, &errDetail)
 	s.True(ok)
 	s.Equal(listErrMsg, errDetail.Message)
 }
@@ -269,7 +288,8 @@ func (s *VisibilitySamplingSuite) TestListClosedWorkflowExecutionsByWorkflowID()
 	// no remaining tokens
 	_, err = s.client.ListClosedWorkflowExecutionsByWorkflowID(ctx, request)
 	s.Error(err)
-	errDetail, ok := err.(*types.ServiceBusyError)
+	var errDetail *types.ServiceBusyError
+	ok := errors.As(err, &errDetail)
 	s.True(ok)
 	s.Equal(listErrMsg, errDetail.Message)
 }
@@ -293,7 +313,8 @@ func (s *VisibilitySamplingSuite) TestListClosedWorkflowExecutionsByStatus() {
 	// no remaining tokens
 	_, err = s.client.ListClosedWorkflowExecutionsByStatus(ctx, request)
 	s.Error(err)
-	errDetail, ok := err.(*types.ServiceBusyError)
+	var errDetail *types.ServiceBusyError
+	ok := errors.As(err, &errDetail)
 	s.True(ok)
 	s.Equal(listErrMsg, errDetail.Message)
 }

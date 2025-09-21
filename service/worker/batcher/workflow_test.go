@@ -36,7 +36,6 @@ import (
 
 	"github.com/uber/cadence/common"
 	"github.com/uber/cadence/common/metrics"
-	mmocks "github.com/uber/cadence/common/metrics/mocks"
 	"github.com/uber/cadence/common/types"
 )
 
@@ -60,8 +59,8 @@ func (s *workflowSuite) SetupTest() {
 
 	batcher, mockResource := setuptest(s.T())
 
-	metricsMock := &mmocks.Client{}
-	metricsMock.On("IncCounter", metrics.BatcherScope, metrics.BatcherProcessorSuccess).Once()
+	metricsMock := metrics.NewMockClient(gomock.NewController(s.T()))
+	metricsMock.EXPECT().IncCounter(metrics.BatcherScope, metrics.BatcherProcessorSuccess).Times(1)
 	batcher.metricsClient = metricsMock
 
 	mockResource.FrontendClient.EXPECT().DescribeDomain(gomock.Any(), gomock.Any()).Return(&types.DescribeDomainResponse{}, nil).AnyTimes()

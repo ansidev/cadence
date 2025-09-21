@@ -28,7 +28,6 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/uber/cadence/common/metrics"
-	"github.com/uber/cadence/common/metrics/mocks"
 )
 
 func TestPublish(t *testing.T) {
@@ -36,7 +35,7 @@ func TestPublish(t *testing.T) {
 		desc                string
 		tags                []metrics.Tag
 		producerFails       bool
-		metricsClientMockFn func() *mocks.Client
+		metricsClientMockFn func(*metrics.MockClient, *metrics.MockScope)
 	}{
 		{
 			desc:          "success",
@@ -44,18 +43,16 @@ func TestPublish(t *testing.T) {
 			tags: []metrics.Tag{
 				metrics.TopicTag("test-topic-1"),
 			},
-			metricsClientMockFn: func() *mocks.Client {
-				metricsClient := &mocks.Client{}
-				metricsScope := &mocks.Scope{}
+			metricsClientMockFn: func(metricsClient *metrics.MockClient, metricsScope *metrics.MockScope) {
 				metricsClient.
-					On("Scope", metrics.MessagingClientPublishScope, metrics.TopicTag("test-topic-1")).
+					EXPECT().
+					Scope(metrics.MessagingClientPublishScope, metrics.TopicTag("test-topic-1")).
 					Return(metricsScope).
-					Once()
-				metricsScope.On("IncCounter", metrics.CadenceClientRequests).Once()
+					Times(1)
+				metricsScope.EXPECT().IncCounter(metrics.CadenceClientRequests).Times(1)
 
 				sw := metrics.NoopScope.StartTimer(-1)
-				metricsScope.On("StartTimer", metrics.CadenceClientLatency).Return(sw).Once()
-				return metricsClient
+				metricsScope.EXPECT().StartTimer(metrics.CadenceClientLatency).Return(sw).Times(1)
 			},
 		},
 		{
@@ -64,19 +61,17 @@ func TestPublish(t *testing.T) {
 			tags: []metrics.Tag{
 				metrics.TopicTag("test-topic-2"),
 			},
-			metricsClientMockFn: func() *mocks.Client {
-				metricsClient := &mocks.Client{}
-				metricsScope := &mocks.Scope{}
+			metricsClientMockFn: func(metricsClient *metrics.MockClient, metricsScope *metrics.MockScope) {
 				metricsClient.
-					On("Scope", metrics.MessagingClientPublishScope, metrics.TopicTag("test-topic-2")).
+					EXPECT().
+					Scope(metrics.MessagingClientPublishScope, metrics.TopicTag("test-topic-2")).
 					Return(metricsScope).
-					Once()
-				metricsScope.On("IncCounter", metrics.CadenceClientRequests).Once()
-				metricsScope.On("IncCounter", metrics.CadenceClientFailures).Once()
+					Times(1)
+				metricsScope.EXPECT().IncCounter(metrics.CadenceClientRequests).Times(1)
+				metricsScope.EXPECT().IncCounter(metrics.CadenceClientFailures).Times(1)
 
 				sw := metrics.NoopScope.StartTimer(-1)
-				metricsScope.On("StartTimer", metrics.CadenceClientLatency).Return(sw).Once()
-				return metricsClient
+				metricsScope.EXPECT().StartTimer(metrics.CadenceClientLatency).Return(sw).Times(1)
 			},
 		},
 	}
@@ -86,13 +81,15 @@ func TestPublish(t *testing.T) {
 			// setup
 			ctrl := gomock.NewController(t)
 			mockProducer := NewMockProducer(ctrl)
+			metricsClient := metrics.NewMockClient(ctrl)
+			metricsScope := metrics.NewMockScope(ctrl)
 			msg := "custom-message"
 			if tc.producerFails {
 				mockProducer.EXPECT().Publish(gomock.Any(), msg).Return(errors.New("publish failed")).Times(1)
 			} else {
 				mockProducer.EXPECT().Publish(gomock.Any(), msg).Return(nil).Times(1)
 			}
-			metricsClient := tc.metricsClientMockFn()
+			tc.metricsClientMockFn(metricsClient, metricsScope)
 
 			// create producer and call publish
 			p := NewMetricProducer(mockProducer, metricsClient, WithMetricTags(tc.tags...))
@@ -105,8 +102,6 @@ func TestPublish(t *testing.T) {
 			if err != nil {
 				return
 			}
-
-			metricsClient.AssertExpectations(t)
 		})
 	}
 }
