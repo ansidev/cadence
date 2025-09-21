@@ -26,13 +26,44 @@ import (
 	"github.com/uber-go/tally"
 )
 
-type metricsScope struct {
-	scope          tally.Scope
-	rootScope      tally.Scope
-	defs           map[MetricIdx]metricDefinition
-	isDomainTagged bool
-	config         HistogramMigration
-}
+//go:generate mockgen -package=$GOPACKAGE -destination=scope_mock.go -self_package=github.com/uber/cadence/common/metrics github.com/uber/cadence/common/metrics Scope
+
+type (
+	// Scope is an interface for metrics
+	Scope interface {
+		// IncCounter increments a counter metric
+		IncCounter(counter MetricIdx)
+		// AddCounter adds delta to the counter metric
+		AddCounter(counter MetricIdx, delta int64)
+		// StartTimer starts a timer for the given metric name.
+		// Time will be recorded when stopwatch is stopped.
+		StartTimer(timer MetricIdx) Stopwatch
+		// RecordTimer starts a timer for the given metric name
+		RecordTimer(timer MetricIdx, d time.Duration)
+		// RecordHistogramDuration records a histogram duration value for the given
+		// metric name
+		RecordHistogramDuration(timer MetricIdx, d time.Duration)
+		// RecordHistogramValue records a histogram value for the given metric name
+		RecordHistogramValue(timer MetricIdx, value float64)
+		// ExponentialHistogram records a subsettable exponential histogram value for the given metric name
+		ExponentialHistogram(hist MetricIdx, d time.Duration)
+		// IntExponentialHistogram records a subsettable exponential histogram value for the given metric name
+		IntExponentialHistogram(hist MetricIdx, value int)
+		// UpdateGauge reports Gauge type absolute value metric
+		UpdateGauge(gauge MetricIdx, value float64)
+		// Tagged return an internal scope that can be used to add additional
+		// information to metrics
+		Tagged(tags ...Tag) Scope
+	}
+
+	metricsScope struct {
+		scope          tally.Scope
+		rootScope      tally.Scope
+		defs           map[MetricIdx]metricDefinition
+		isDomainTagged bool
+		config         HistogramMigration
+	}
+)
 
 func newMetricsScope(
 	rootScope tally.Scope,

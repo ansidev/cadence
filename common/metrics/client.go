@@ -26,15 +26,41 @@ import (
 	"github.com/uber-go/tally"
 )
 
-// ClientImpl is used for reporting metrics by various Cadence services
-type ClientImpl struct {
-	// parentReporter is the parent scope for the metrics
-	parentScope tally.Scope
-	childScopes map[ScopeIdx]tally.Scope
-	metricDefs  map[MetricIdx]metricDefinition
-	serviceIdx  ServiceIdx
-	config      HistogramMigration
-}
+//go:generate mockgen -package=$GOPACKAGE -destination=client_mock.go -self_package=github.com/uber/cadence/common/metrics github.com/uber/cadence/common/metrics Client
+
+type (
+	// Client is  the interface used to report metrics tally.
+	Client interface {
+		// IncCounter increments a counter metric
+		IncCounter(scope ScopeIdx, counter MetricIdx)
+		// AddCounter adds delta to the counter metric
+		AddCounter(scope ScopeIdx, counter MetricIdx, delta int64)
+		// StartTimer starts a timer for the given
+		// metric name. Time will be recorded when stopwatch is stopped.
+		StartTimer(scope ScopeIdx, timer MetricIdx) tally.Stopwatch
+		// RecordTimer starts a timer for the given
+		// metric name
+		RecordTimer(scope ScopeIdx, timer MetricIdx, d time.Duration)
+		// RecordHistogramDuration records a histogram duration value for the given
+		// metric name
+		RecordHistogramDuration(scope ScopeIdx, timer MetricIdx, d time.Duration)
+		// UpdateGauge reports Gauge type absolute value metric
+		UpdateGauge(scope ScopeIdx, gauge MetricIdx, value float64)
+		// Scope return an internal scope that can be used to add additional
+		// information to metrics
+		Scope(scope ScopeIdx, tags ...Tag) Scope
+	}
+
+	// ClientImpl is used for reporting metrics by various Cadence services
+	ClientImpl struct {
+		// parentReporter is the parent scope for the metrics
+		parentScope tally.Scope
+		childScopes map[ScopeIdx]tally.Scope
+		metricDefs  map[MetricIdx]metricDefinition
+		serviceIdx  ServiceIdx
+		config      HistogramMigration
+	}
+)
 
 // NewClient creates and returns a new instance of
 // Client implementation

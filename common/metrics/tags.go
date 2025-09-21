@@ -23,6 +23,8 @@ package metrics
 import (
 	"regexp"
 	"strconv"
+
+	"github.com/uber-go/tally"
 )
 
 const (
@@ -84,6 +86,12 @@ const (
 
 var (
 	safeAlphaNumericStringRE = regexp.MustCompile(`[^a-zA-Z0-9]`)
+	sanitizer                = tally.NewSanitizer(tally.SanitizeOptions{
+		NameCharacters:       tally.ValidCharacters{Ranges: tally.AlphanumericRange, Characters: tally.UnderscoreCharacters},
+		KeyCharacters:        tally.ValidCharacters{Ranges: tally.AlphanumericRange, Characters: tally.UnderscoreCharacters},
+		ValueCharacters:      tally.ValidCharacters{Ranges: tally.AlphanumericRange, Characters: tally.UnderscoreCharacters},
+		ReplacementCharacter: '_',
+	})
 )
 
 // Tag is an interface to define metrics tags
